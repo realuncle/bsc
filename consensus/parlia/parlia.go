@@ -737,6 +737,7 @@ func (p *Parlia) PrepareVoteAttestation(chain consensus.ChainHeaderReader, heade
 				return nil
 			}
 		}
+		parent = chain.GetHeaderByHash(parent.ParentHash)
 	}
 	return nil
 }
