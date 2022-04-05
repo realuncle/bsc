@@ -141,6 +141,7 @@ type CacheConfig struct {
 	SnapshotLimit      int           // Memory allowance (MB) to use for caching snapshot entries in memory
 	Preimages          bool          // Whether to store preimage of trie key to the disk
 	TriesInMemory      uint64        // How many tries keeps in memory
+	NoTries            bool          // Insecure settings. Do not have any tries in databases if enabled.
 
 	SnapshotWait bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
 }
@@ -284,6 +285,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 			Cache:     cacheConfig.TrieCleanLimit,
 			Journal:   cacheConfig.TrieCleanJournal,
 			Preimages: cacheConfig.Preimages,
+			NoTries:   cacheConfig.NoTries,
 		}),
 		triesInMemory:         cacheConfig.TriesInMemory,
 		quit:                  make(chan struct{}),
@@ -439,7 +441,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 			log.Warn("Enabling snapshot recovery", "chainhead", head.NumberU64(), "diskbase", *layer)
 			recover = true
 		}
-		bc.snaps, _ = snapshot.New(bc.db, bc.stateCache.TrieDB(), bc.cacheConfig.SnapshotLimit, int(bc.cacheConfig.TriesInMemory), head.Root(), !bc.cacheConfig.SnapshotWait, true, recover)
+		bc.snaps, _ = snapshot.New(bc.db, bc.stateCache.TrieDB(), bc.cacheConfig.SnapshotLimit, int(bc.cacheConfig.TriesInMemory), head.Root(), !bc.cacheConfig.SnapshotWait, true, recover, bc.stateCache.NoTries())
 	}
 	// do options before start any routine
 	for _, option := range options {
@@ -1096,6 +1098,9 @@ func (bc *BlockChain) HasFastBlock(hash common.Hash, number uint64) bool {
 
 // HasState checks if state trie is fully present in the database or not.
 func (bc *BlockChain) HasState(hash common.Hash) bool {
+	if bc.stateCache.NoTries() {
+		return bc.snaps != nil && bc.snaps.Snapshot(hash) != nil
+	}
 	if bc.pipeCommit && bc.snaps != nil {
 		// If parent snap is pending on verification, treat it as state exist
 		if s := bc.snaps.Snapshot(hash); s != nil && !s.Verified() {
@@ -1113,6 +1118,9 @@ func (bc *BlockChain) HasBlockAndState(hash common.Hash, number uint64) bool {
 	block := bc.GetBlock(hash, number)
 	if block == nil {
 		return false
+	}
+	if bc.stateCache.NoTries() {
+		return bc.snaps != nil && bc.snaps.Snapshot(block.Root()) != nil
 	}
 	return bc.HasState(block.Root())
 }
@@ -2109,6 +2117,9 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return it.index, err
+		}
+		if statedb.NoTrie() {
+			statedb.SetCurrentRoot(block.Root())
 		}
 		bc.updateHighestVerifiedHeader(block.Header())
 

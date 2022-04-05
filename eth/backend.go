@@ -194,6 +194,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			TrieDirtyLimit:     config.TrieDirtyCache,
 			TrieDirtyDisabled:  config.NoPruning,
 			TrieTimeLimit:      config.TrieTimeout,
+			NoTries:            config.NoTries,
 			SnapshotLimit:      config.SnapshotCache,
 			TriesInMemory:      config.TriesInMemory,
 			Preimages:          config.Preimages,
@@ -201,7 +202,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	)
 	bcOps := make([]core.BlockChainOption, 0)
 	// TODO diffsync performance is not as expected, disable it when pipecommit is enabled for now
-	if config.DiffSync && !config.PipeCommit {
+	if config.DiffSync && !config.PipeCommit && !config.NoTries {
 		bcOps = append(bcOps, core.EnableLightProcessor)
 	}
 	if config.PipeCommit {
